@@ -1,18 +1,20 @@
 import { BadRequestException, Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { User } from './entities/user.entity';
 import { Model } from 'mongoose';
-
 import * as bcryptjs from 'bcryptjs';
 import { LoginDto } from './dto/login.dto';
+import { JwtService } from '@nestjs/jwt';
+import { JwtPayload } from './interfaces/jwt-payload';
+import { LoginResponse } from './interfaces/login-response';
+import { RegisterUserDto,CreateUserDto, UpdateAuthDto } from './dto';
 
 @Injectable()
 export class AuthService {
 
   constructor(
-    @InjectModel(User.name) private userModel: Model<User>
+    @InjectModel(User.name) private userModel: Model<User>,
+    private jwtService: JwtService
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
@@ -41,7 +43,18 @@ export class AuthService {
 
   }
 
-  async login(loginDto: LoginDto){
+  async register(registerUserDto: RegisterUserDto): Promise<LoginResponse>{
+
+    const user = await this.create(registerUserDto); // El create acepta el registerUserDto porque lucen igual, si no fuese así habria q mandar un objeto con las propiedades en plan {id: registerUserDto.id, etc}
+
+    return {
+      user: user,
+      token: this.getJwtToken({id: user._id})
+    }
+
+  }
+
+  async login(loginDto: LoginDto): Promise<LoginResponse>{
 
     const {email, password} = loginDto;
     
@@ -55,13 +68,19 @@ export class AuthService {
 
     return {
       user: rest,
-      token: 'ABC-123'
+      token: this.getJwtToken({id: user.id})
     }
 
   }
 
-  findAll() {
-    return `This action returns all auth`;
+  findAll(): Promise<User[]> {
+    return this.userModel.find();
+  }
+
+  async findUserById(id: string){
+    const user = await this.userModel.findById(id);
+    const {password, ...rest} = user.toJSON();
+    return rest;
   }
 
   findOne(id: number) {
@@ -75,4 +94,10 @@ export class AuthService {
   remove(id: number) {
     return `This action removes a #${id} auth`;
   }
+
+  getJwtToken(payload: JwtPayload){
+    const token = this.jwtService.sign(payload);
+    return token;
+  }
+
 }
